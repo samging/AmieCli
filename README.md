@@ -1,7 +1,7 @@
 An interpreter for Kotlin scripts that train, ask, group and serve neural network models on your own machine (headless). \
 open models in ONNX, TorchScript and TensorFlow. \
 You can import models them from Hugging Face. \
-Add your own functionality (backend service) amie can use jars (they're defined with certain interface [jars](www.github.com/samging/jar-jars). 
+Add your own functionality (backend service) amie can use jars (they're defined with certain interface [jars](www.github.com/samging/jar-jar). 
 
 ```bash
 >>> amie package --help # lists the public github jar-jars (runs on workflow)
