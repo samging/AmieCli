@@ -17,6 +17,9 @@ import org.example.project.components.terminal.window.controller.sourceFile.info
 import org.example.project.components.terminal.window.controller.modelLoaders.OrtSessions
 import org.example.project.components.terminal.window.controller.modelLoaders.builderImplement.openOnnxModel
 import org.example.project.components.terminal.window.controller.modelLoaders.imported.ImportedModels
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.AotiAttempt
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.AotiModels
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.AotiVectorModel
 import org.example.project.components.terminal.window.controller.envBuilder.ScriptEnvironments
 import org.example.project.components.terminal.window.controller.pluginEngine.JarPackages
 import org.example.project.components.terminal.window.controller.runtime.SpeechModels
@@ -111,7 +114,7 @@ interface ScriptLogger {
      * Every kind is listed on the Models page, where any session can be terminated. One that lacks something it
      * needs is refused, with everything it lacks in the message: nothing of it is opened
      */
-    fun initMod(modelName: String): InteractionModel {
+    private fun initModOrt(modelName: String): InteractionModel {
         val name = modelName.trim()
         if (name.endsWith(".jar", ignoreCase = true)) return OrtScopes.opened(JarPackages.open(name)).also { ScriptRuns.opened("package:${it.id}") }
         if (!hasModule(name) && !TextModels.has(name) && SpeechModels.has(name)) {
@@ -126,6 +129,33 @@ interface ScriptLogger {
         }
         val (session, opened) = ModelSessions.acquire(name)
         return OrtScopes.opened(session, opened).also { ScriptRuns.opened("model:${it.id}") }
+    }
+    /**
+     * The session of a model by name, on the default runtime "aoti": a numeric-vector ONNX model (one float32 input, one
+     * float32 output, a [1, n] vector in and a [1, classes] answer out) runs on the AOTInductor runtime of onnx2pt, the
+     * numbers of the text in ("0.1, 0.2, …") and the labels with their scores out. Every other name, and an ONNX model
+     * aoti can't take (a text model with token ids, several inputs, AOTI not set up), is opened on "ort" exactly as
+     * initMod(modelName) opened it before, with a console line saying why. "ort" never tries aoti: pass it for the models
+     * that need ONNX Runtime. Needs the AOTI native library (AOTI_FFI_LIB or -Daoti.ffi.lib) and onnx2pt's compiler
+     * (AOTI_PYTHON, AOTI_COMPILER_SCRIPT); see the AOTI runtime page
+     */
+    fun initMod(modelName: String, runtime: String = "aoti"): InteractionModel = when (runtime.trim().lowercase()) {
+        "ort" -> initModOrt(modelName)
+        "aoti" -> initModAoti(modelName)
+        else -> throw IllegalArgumentException("runtime is \"ort\" or \"aoti\", not \"$runtime\"")
+    }
+
+    private fun initModAoti(modelName: String): InteractionModel {
+        val name = modelName.trim()
+        if (name.endsWith(".jar", ignoreCase = true) || hasModule(name) || TextModels.has(name) || SpeechModels.has(name)) return initModOrt(name)
+        return when (val attempt = AotiModels.tryOpen(name)) {
+            is AotiAttempt.Opened -> OrtScopes.opened(attempt.model).also { ScriptRuns.opened("aoti:${it.id}") }
+            AotiAttempt.NotOnnx -> initModOrt(name)
+            is AotiAttempt.Refused -> {
+                log("initMod(\"$name\") opened on ort: aoti can't run it, ${attempt.reason}. Pass \"ort\" to open it there without this line")
+                initModOrt(name)
+            }
+        }
     }
     /**
      * Whether AMP has a model of that name, built, a text model, a speech model or one imported into

@@ -11,13 +11,13 @@ plugins {
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
+        languageVersion.set(JavaLanguageVersion.of(25))
     }
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_21)
+        jvmTarget.set(JvmTarget.JVM_25)
     }
 }
 
@@ -42,6 +42,8 @@ application {
         // The heap may grow to 35% of the machine's RAM, as the app's; the encoders load outside it
         "-XX:MaxRAMPercentage=35",
         "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        // The AOTI runtime calls its native library through java.lang.foreign
+        "--enable-native-access=ALL-UNNAMED",
     ) + (System.getenv("AMIE_JVM_ARGS")?.split(' ')?.filter { it.isNotBlank() } ?: emptyList())
 }
 

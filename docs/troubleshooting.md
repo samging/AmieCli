@@ -139,3 +139,27 @@ that would not load leaves a line in the console starting `encoder: couldn't loa
 what the machine had free. An out of memory error nobody caught leaves a line starting `Out of memory on thread`, with
 the heap limit it ran into; the app goes on, and what that thread was doing (a build, a page's read) is lost and can be
 started again. A template that can't start because the cap is reached says so with the heap it was counted against.
+
+## The AOTI runtime
+
+`initMod(name)` opens a numeric-vector ONNX model on the AOTI runtime by default. When AOTI can't take the model, or
+isn't set up, the model opens on ONNX Runtime instead and the console says why, as one line
+(`initMod("…") opened on ort: aoti can't run it, …`). Nothing in the script needs to change. The set-up is in
+[The AOTI runtime](aoti-runtime.md).
+
+- **`native library not bundled at …; set -Daoti.ffi.lib=<path>`** in that line. amie doesn't bundle `libaoti_ffi`. Set
+  `AOTI_FFI_LIB` to the built library (onnx2pt's `onnx_aoti/build.sh` builds it), or pass `-Daoti.ffi.lib=<path>` in
+  `AMIE_JVM_ARGS`.
+- **`Compiler script not found at …`.** Set `AOTI_COMPILER_SCRIPT` to onnx2pt's `onnx_aoti/onnx_aoti.py`.
+- **`Could not start Python at …`.** `AOTI_PYTHON` names a Python that doesn't exist. Point it at onnx2pt's
+  `env/bin/python`, the one with torch and onnx installed.
+- **`AOTInductor compilation failed for …`.** The compiler ran and failed; its output is in the message. The model
+  opens on ort, and the same failure is remembered for the process, so the next open doesn't compile again.
+- **`its input is INT64, not float32`, `aoti takes one of each`, or `aoti takes a [1, n] vector with n known`.** The model
+  is a text model or has a shape AOTI doesn't take. It opens on ONNX Runtime, which is what it needs. To keep the console quiet, pass
+  `"ort"`: `initMod("name", "ort")`.
+- **`AOTInductorModelContainerRun failed`** from a call on an open model. The package calls back into Python for an op
+  that Inductor couldn't lower, which the Rust and Kotlin hosts can't do. Recompile with onnx2pt's converter, or open
+  the model with `"ort"`.
+- **`'<name>' is closed; initMod it again`.** The session was closed by its block, by Terminate on the Sessions tab, or by
+  a script's end. Open it again.

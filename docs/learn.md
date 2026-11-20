@@ -28,7 +28,7 @@ Building amie...
 Installed amie 1.0.0 (Kotlin 2.1.0) on OpenJDK 64-Bit Server VM 21.0.5, Mac OS X aarch64 at /Users/me/.local/bin/amie
 ```
 
-`--prefix /usr/local` installs it for every user (build as yourself first, then `sudo` it with `--no-build`); `--uninstall` takes it out again. A JDK 21 is needed, to run as well as to build, and `amie` finds one on its own: `AMIE_JAVA_HOME`, `JAVA_HOME` when it is one, the Mac's `java_home`, Homebrew's `openjdk@21`, sdkman's, `/usr/lib/jvm`, or one Gradle downloaded.
+`--prefix /usr/local` installs it for every user (build as yourself first, then `sudo` it with `--no-build`); `--uninstall` takes it out again. A JDK 25 is needed, to run as well as to build, and `amie` finds one on its own: `AMIE_JAVA_HOME`, `JAVA_HOME` when it is one, the Mac's `java_home`, Homebrew's `openjdk@25`, sdkman's, `/usr/lib/jvm`, or one Gradle downloaded.
 
 From the checkout, the launcher at the root of the repository runs it without installing, building it the first time and again whenever the sources changed:
 
@@ -403,7 +403,7 @@ public class Greeter {
 }
 ```
 
-Two sessions of one jar never share an instance or a static field. `run` runs on amie's `amie-package-call` thread while the script waits; Ctrl-C interrupts it, and an exception it throws becomes the script's error. The classes must be compiled for Java 21 or older, and a Kotlin package can rely on amie's own standard library. When a jar has several classes that fit, `"entry"` in its `META-INF/amie/package.json` names the one.
+Two sessions of one jar never share an instance or a static field. `run` runs on amie's `amie-package-call` thread while the script waits; Ctrl-C interrupts it, and an exception it throws becomes the script's error. The classes must be compiled for Java 25 or older, and a Kotlin package can rely on amie's own standard library. When a jar has several classes that fit, `"entry"` in its `META-INF/amie/package.json` names the one.
 
 ### Packages from GitHub {#github-packages}
 

@@ -26,8 +26,8 @@ amie/install.sh
 ```
 
 `--prefix /usr/local` installs it for every user (build as yourself first, then `sudo` it with `--no-build`);
-`--uninstall` takes it out again. A JDK 21 is needed, to run as well as to build, and `amie` finds one on its own:
-`AMIE_JAVA_HOME`, `JAVA_HOME` when it is one, the Mac's `java_home`, Homebrew's `openjdk@21`, sdkman's, `/usr/lib/jvm`,
+`--uninstall` takes it out again. A JDK 25 is needed, to run as well as to build, and `amie` finds one on its own:
+`AMIE_JAVA_HOME`, `JAVA_HOME` when it is one, the Mac's `java_home`, Homebrew's `openjdk@25`, sdkman's, `/usr/lib/jvm`,
 or one Gradle downloaded.
 
 From the checkout, the launcher at the repository root runs it without installing, building it the first time and
@@ -44,6 +44,24 @@ The AMP folder is `~/Library/Application Support/amie pilot/AMP` on macOS, `%APP
 `~/.local/share/amie-pilot/AMP` elsewhere; `AMIE_AMP_DIR` or `--amp <folder>` names another, made when it doesn't
 exist. The BERT encoder every intent model trains on is read from `AMP/models/bert`, or from the folder
 `AMIE_MODELS_DIR` names.
+
+### The AOTI runtime
+
+`initMod("name", "aoti")` runs a numeric-vector ONNX model on the AOTInductor runtime of onnx2pt instead of ONNX
+Runtime. The model has one float32 input and one float32 output; the text is its numbers, comma or space separated, and
+the answer is the labels of its `config.json` with their scores, as `predict`, `answer` and `scores` give them on any
+model. The first call compiles the ONNX file into a `.pt2` package with onnx2pt's Python compiler; later calls, in new
+processes too, load the cached package. Three environment variables are needed:
+
+| Variable | What it names |
+|---|---|
+| `AOTI_FFI_LIB` | The native library, `libaoti_ffi.dylib` (macOS) or `libaoti_ffi.so`, built by onnx2pt's `onnx_aoti/build.sh`. Not bundled in amie, so it must be set |
+| `AOTI_PYTHON` | The Python of onnx2pt's environment that has torch and onnx, such as `<onnx2pt>/env/bin/python` |
+| `AOTI_COMPILER_SCRIPT` | onnx2pt's compiler, `<onnx2pt>/onnx_aoti/onnx_aoti.py` |
+
+The compiled packages are cached in `~/.cache/onnx_aoti`, or `AOTI_CACHE_DIR`. A model that needs more than one float
+input, or int64 token ids, is refused with the reason; open it with `initMod("name")` instead. Opening a model on
+`"aoti"` holds it like any other session: the Sessions tab lists it, and the block around the call closes it.
 
 ## Try it
 
@@ -195,6 +213,7 @@ signatures, and [docs/sandbox-scripting.md](../../docs/sandbox-scripting.md) in 
 | `group("name")` | The models of a group asked together: `.each(text)`, `.vote(text)`, `.combined(text)` |
 | `huggingFace("owner/repo")`, `huggingFace.search("bert", format = "onnx")` | A model of the Hub imported into `AMP/models/imported`, and the search |
 | `importModel("/path/model.onnx")` | An ONNX, TorchScript or TensorFlow model by its path |
+| `initMod("name", "aoti")` | A numeric-vector ONNX model (one float32 input, one float32 output) on the AOTInductor runtime of onnx2pt, from `AMP/models/imported/<name>` or a path; `.predict(text)`, `.answer(text)` and `.scores(text)` take the numbers of the text, `"0.1, 0.2, …"`. `initMod("name", "ort")` is `initMod("name")`. A text model with token ids stays on ONNX Runtime. See [The AOTI runtime](#the-aoti-runtime) |
 | `serve("name", port = 8765)`, `stopServing("name")` | The model over HTTP |
 | `quietly { }` | The block without the console line each model answer writes, for measuring a model on thousands of texts; the script's own `log` lines still show |
 | `ortClosable { }`, `ortStatic("name") { }`, `ortRequired("name") { }`, `ortLimited("name", 3) { }`, `ortAsync { }` | What a block opens: closed with it, kept across runs, kept while anything else is in session, capped, or run in the background |
@@ -316,7 +335,7 @@ public class Greeter {
 - **Which class is the package class.** The `entry` the jar's metadata names, else the manifest's `Main-Class`, else
   a class implementing an interface named `AmiePackage`, else the first class that fits. A jar with several
   candidates should name one as `entry`.
-- **Java.** amie runs Java 21, so the classes must be compiled for 21 or older. amie's own Kotlin standard library
+- **Java.** amie runs Java 25, so the classes must be compiled for 25 or older. amie's own Kotlin standard library
   is under every package, so a Kotlin package does not need to bundle one.
 - **Metadata.** `META-INF/amie/package.json` gives the name, description, `entry`, `java`, the config files with their
   templates, and the tests `amie package test` runs. A jar without it still opens. See
@@ -474,4 +493,4 @@ JLine and slf4j-simple. Sources are under `src/main/kotlin/org/amie/cli`:
 | `ScriptRun.kt` | A script as `main.kts`, the wait for a model left serving |
 | `Commands.kt`, `ModelCommands.kt` | The commands |
 | `Output.kt`, `Style.kt`, `AmpFolder.kt`, `Banner.kt` | The console on standard output, its colors, the AMP folder, the greeting |
-| `jdk.sh`, `install.sh` | The JDK 21 lookup, spliced into the built `bin/amie` and sourced by the launcher; the install onto the PATH |
+| `jdk.sh`, `install.sh` | The JDK 25 lookup, spliced into the built `bin/amie` and sourced by the launcher; the install onto the PATH |
