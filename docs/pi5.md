@@ -124,14 +124,14 @@ checkout of this repository:
 ./scripts/pi-bench.sh
 ```
 
-That one command installs a JDK 21 if the Pi has none (`apt`, else Temurin 21 from adoptium.net into `~/amie-bench/jdk`),
+That one command installs a JDK 25 if the Pi has none (`apt`, else Temurin 25 from adoptium.net into `~/amie-bench/jdk`),
 picks `-Xmx2g` on a Pi with under 6 GB and `-Xmx4g` otherwise, and runs
 `java -Xmx2g -cp '/opt/amie-pilot/lib/app/*' org.example.project.MainKt --bench` on a scratch AMP folder in
 `~/amie-bench/amp`. Without the DEB it builds the classes from the checkout with Gradle first and stops Gradle's daemon
 so it is not in the memory being measured. It prints the Pi's model, cores, RAM, governor and throttling state, then
 the `bench:` lines, and keeps them in `~/amie-bench/result-<time>.txt` with the JSON next to the AMP folder.
 
-To run it by hand, with the JDK installed (`sudo apt install openjdk-21-jdk-headless`, or Temurin 21):
+To run it by hand, with the JDK installed (`sudo apt install openjdk-25-jdk-headless`, or Temurin 25):
 
 ```bash
 AMIE_AMP_DIR=$HOME/amie-bench/amp java -Xmx2g -Dcompose.application.resources.dir=/opt/amie-pilot/lib/app/resources \

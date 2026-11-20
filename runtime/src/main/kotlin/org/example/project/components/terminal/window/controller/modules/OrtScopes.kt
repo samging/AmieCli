@@ -10,6 +10,7 @@ import org.example.project.components.terminal.window.controller.models.KIND_ONN
 import org.example.project.components.terminal.window.controller.models.KIND_SHARED
 import org.example.project.components.terminal.window.controller.models.SessionInfo
 import org.example.project.components.terminal.window.controller.modelLoaders.imported.DjlModel
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.AotiVectorModel
 import org.example.project.components.terminal.window.controller.pluginEngine.JarPackageSession
 import org.example.project.components.terminal.window.controller.runtime.ModelSession
 import java.util.ArrayDeque
@@ -231,6 +232,11 @@ object OrtScopes {
     /** A TorchScript or TensorFlow model from a file or an imported folder, new on every call */
     internal fun opened(model: DjlModel): DjlModel = model.also {
         hold(true, it, "${it.engine} ${it.name} #${it.id}", it::close, { null }, { it.runs }, { it.running > 0 }) { it.closed }
+    }
+
+    /** A numeric-vector model on the AOTI runtime, new on every call; it holds no ORT session */
+    internal fun opened(model: AotiVectorModel): AotiVectorModel = model.also {
+        hold(true, it, "aoti ${it.name} #${it.id}", it::close, { null }, { it.runs }, { it.busy }) { it.closed }
     }
 
     /** A model that is its one ONNX Runtime session, importModelOnnx's or the default model, new on every call */

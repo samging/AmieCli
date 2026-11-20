@@ -2,6 +2,7 @@
 
 ## Next: projects of templates, and one name per command
 
+- **`initMod("name", "aoti")`.** A numeric-vector ONNX model (one float32 input, one float32 output) runs on the AOTInductor runtime of onnx2pt, the same `predict`, `answer` and `scores` as the ONNX Runtime session. `initMod("name", "ort")` is `initMod("name")`. Needs `AOTI_FFI_LIB`, `AOTI_PYTHON` and `AOTI_COMPILER_SCRIPT`; see [The AOTI runtime](aoti-runtime.md). amie now runs on JDK 25 with Kotlin 2.3.21, and `--enable-native-access` is set in the launcher.
 - **Projects group templates.** `amie template new <name> [--project p]` makes a template and opens it in `$VISUAL` or
   `$EDITOR`. A project (`amie new p [templates]`) keeps an ordered list of templates in `AMP/projects/p/templates.txt`,
   and `amie run p` runs them one after another in the env `p`, then the project's `main.kts`, stopping at the first that
@@ -58,8 +59,8 @@
 - **Piper voices import ready to speak.** A Piper voice from the Hub (`rhasspy/piper-voices`, a path to one voice) lands
   in `AMP/models/speech`, laid out as sherpa-onnx wants it, its ONNX metadata added when the export lacks it. A path
   that names no voice is refused instead of another voice being taken in its place.
-- **Installing on a machine without Java.** `install.sh` finds a JDK 21 or installs one: Homebrew's on a Mac, apt's on
-  Debian and Ubuntu, else a Temurin build from Adoptium into `~/.local/lib/jdk-21`; `--no-jdk` leaves that out.
+- **Installing on a machine without Java.** `install.sh` finds a JDK 25 or installs one: Homebrew's on a Mac, apt's on
+  Debian and Ubuntu, else a Temurin build from Adoptium into `~/.local/lib/jdk-25`; `--no-jdk` leaves that out.
 - **Fixes at the prompt.** `:help` lists every command line of amie, each as `amie <command> --help` when it has more
   than one action, with no example line repeated. The line editor no longer expands `!!` as shell history, which broke
   Kotlin's non-null assertion in a pasted block. A name `initMod` can't find says every folder it looked in and names
@@ -354,7 +355,7 @@ in the sandbox can run one: the HTTP endpoints have no way to. See [Scripting AP
 ### Exporting a script, compiled
 
 The export square on the strip over the editor (**⌘E**) makes a folder that runs the script with plain `java`, and by
-default the script and its templates go in compiled to classes: no compiler in the bundle, no compile at start, Java 21
+default the script and its templates go in compiled to classes: no compiler in the bundle, no compile at start, Java 25
 or newer. The pane lists every saved template to take along; `java -jar run.jar --template "name"` runs one, `--list`
 says what there is, and templates called with `template("name")` or `coroutineTemplate` go along and call each other in
 the bundle as they do here. A script that calls two templates comes to 20 MB, starts and ends in 0.3 s and peaks at

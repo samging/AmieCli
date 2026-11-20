@@ -28,7 +28,7 @@ amie/                 the interpreter, Gradle module :amie, package org.amie.cli
   src/test/kotlin/org/amie/cli/
   learn/index.html    the learn book, copied into the jar and opened by amie docs
   build.gradle.kts    the application plugin; jdk.sh is spliced into the start script
-  install.sh, jdk.sh  install on the PATH; find (or install) a JDK 21
+  install.sh, jdk.sh  install on the PATH; find (or install) a JDK 25
 runtime/              the engine, Gradle module :runtime, package org.example.project
   src/main/kotlin/org/example/project/
 scripts/              setup.sh, which downloads the encoder and voice models into the AMP folder
@@ -121,7 +121,7 @@ the build on ARM machines anyway), `envBuilder/MavenCentral.kt`, `metrics/ModelV
 
 ```mermaid
 flowchart TD
-    A[bin/amie or ~/.local/bin/amie] --> B[jdk.sh: find a JDK 21, export JAVA_HOME]
+    A[bin/amie or ~/.local/bin/amie] --> B[jdk.sh: find a JDK 25, export JAVA_HOME]
     B --> C[MainKt.main → Amie.main]
     C --> D[CommandLine.parse → Invocation]
     D -->|help, version, usage| E[print, exit]
@@ -148,8 +148,8 @@ Step by step, with the file and function at each:
 1. **The launcher.** `bin/amie` sources `amie/jdk.sh` and rebuilds with `./gradlew :amie:installDist` when a source
    is newer than the built binary, then execs `amie/build/install/amie/bin/amie`. The installed `bin/amie` is Gradle's
    start script with `jdk.sh` spliced in by `tasks.startScripts` in `amie/build.gradle.kts`. `jdk.sh` looks, in
-   order, at `AMIE_JAVA_HOME`, `JAVA_HOME`, the Mac's `java_home`, Homebrew, `~/.local/lib/jdk-21`, sdkman,
-   `/usr/lib/jvm` and Gradle's downloaded JDKs, and exits with 2 when none is a 21. The JVM starts with
+   order, at `AMIE_JAVA_HOME`, `JAVA_HOME`, the Mac's `java_home`, Homebrew, `~/.local/lib/jdk-25`, sdkman,
+   `/usr/lib/jvm` and Gradle's downloaded JDKs, and exits with 2 when none is a 25. The JVM starts with
    `-Damie.version`, `-Djava.awt.headless=true`, `-XX:MaxRAMPercentage=35` and the main class `org.amie.cli.MainKt`.
 2. **Parsing.** `Main.kt: Amie.main` calls `CommandLine.parse`. Options are `-h`, `--version`, `-i`, `-v`, `-q`,
    `-e`, `--amp`, `-c`; the first other word is looked up in `Commands.all` and becomes a `Command`, else a

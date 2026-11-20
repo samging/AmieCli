@@ -5,9 +5,9 @@
 #
 #   install.sh [--prefix DIR] [--no-build] [--no-jdk] [--uninstall]
 #
-# amie runs on a JDK 21. Without one, install.sh gets one first: Homebrew's openjdk@21 on a Mac, the openjdk-21
+# amie runs on a JDK 25. Without one, install.sh gets one first: Homebrew's openjdk@25 on a Mac, the openjdk-25
 # package on Debian and Ubuntu (apt, with sudo), and where neither can, Eclipse Temurin's JDK unpacked under
-# PREFIX/lib/jdk-21, which needs no root. --no-jdk skips that and stops instead.
+# PREFIX/lib/jdk-25, which needs no root. --no-jdk skips that and stops instead.
 # --no-build installs what ./gradlew :amie:installDist built last; --uninstall removes the install (not the JDK).
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
@@ -37,47 +37,47 @@ if [ "$uninstall" = yes ]; then
     exit 0
 fi
 
-# A JDK 21, found by jdk.sh (sourced in a subshell first, since it exits when there is none) or installed now
+# A JDK 25, found by jdk.sh (sourced in a subshell first, since it exits when there is none) or installed now
 has_jdk() { (. "$here/jdk.sh") >/dev/null 2>&1; }
 
-# Temurin's JDK 21 for this machine, unpacked under PREFIX/lib/jdk-21: no root needed, and jdk.sh looks there
+# Temurin's JDK 25 for this machine, unpacked under PREFIX/lib/jdk-25: no root needed, and jdk.sh looks there
 temurin() {
     case "$(uname -m)" in
         arm64|aarch64) arch=aarch64 ;;
         x86_64|amd64) arch=x64 ;;
-        *) echo "install.sh: no Temurin JDK for $(uname -m); install a JDK 21 yourself and set AMIE_JAVA_HOME." >&2; return 1 ;;
+        *) echo "install.sh: no Temurin JDK for $(uname -m); install a JDK 25 yourself and set AMIE_JAVA_HOME." >&2; return 1 ;;
     esac
     case "$(uname -s)" in
         Darwin) os=mac ;;
         Linux) os=linux ;;
-        *) echo "install.sh: no Temurin JDK for $(uname -s); install a JDK 21 yourself and set AMIE_JAVA_HOME." >&2; return 1 ;;
+        *) echo "install.sh: no Temurin JDK for $(uname -s); install a JDK 25 yourself and set AMIE_JAVA_HOME." >&2; return 1 ;;
     esac
-    command -v curl >/dev/null || { echo "install.sh: curl is needed to download a JDK; install it, or a JDK 21, first." >&2; return 1; }
-    url="https://api.adoptium.net/v3/binary/latest/21/ga/$os/$arch/jdk/hotspot/normal/eclipse"
-    echo "Downloading Eclipse Temurin JDK 21 for $os $arch into $prefix/lib/jdk-21..." >&2
-    rm -rf "$prefix/lib/jdk-21.part"
-    mkdir -p "$prefix/lib/jdk-21.part"
-    curl -fsSL "$url" | tar -xz -C "$prefix/lib/jdk-21.part"
-    rm -rf "$prefix/lib/jdk-21"
-    mv "$prefix/lib/jdk-21.part"/jdk-21* "$prefix/lib/jdk-21"
-    rm -rf "$prefix/lib/jdk-21.part"
+    command -v curl >/dev/null || { echo "install.sh: curl is needed to download a JDK; install it, or a JDK 25, first." >&2; return 1; }
+    url="https://api.adoptium.net/v3/binary/latest/25/ga/$os/$arch/jdk/hotspot/normal/eclipse"
+    echo "Downloading Eclipse Temurin JDK 25 for $os $arch into $prefix/lib/jdk-25..." >&2
+    rm -rf "$prefix/lib/jdk-25.part"
+    mkdir -p "$prefix/lib/jdk-25.part"
+    curl -fsSL "$url" | tar -xz -C "$prefix/lib/jdk-25.part"
+    rm -rf "$prefix/lib/jdk-25"
+    mv "$prefix/lib/jdk-25.part"/jdk-25* "$prefix/lib/jdk-25"
+    rm -rf "$prefix/lib/jdk-25.part"
 }
 
 install_jdk() {
-    echo "amie needs a JDK 21 and none was found." >&2
+    echo "amie needs a JDK 25 and none was found." >&2
     case "$(uname -s)" in
         Darwin)
             if command -v brew >/dev/null; then
-                echo "Installing Homebrew's openjdk@21..." >&2
-                brew install openjdk@21
+                echo "Installing Homebrew's openjdk@25..." >&2
+                brew install openjdk@25
             else
                 temurin
             fi ;;
         Linux)
-            if command -v apt-get >/dev/null && apt-cache show openjdk-21-jdk-headless >/dev/null 2>&1; then
-                echo "Installing openjdk-21-jdk-headless with apt..." >&2
-                if [ "$(id -u)" = 0 ]; then apt-get install -y openjdk-21-jdk-headless
-                else sudo apt-get install -y openjdk-21-jdk-headless; fi
+            if command -v apt-get >/dev/null && apt-cache show openjdk-25-jdk-headless >/dev/null 2>&1; then
+                echo "Installing openjdk-25-jdk-headless with apt..." >&2
+                if [ "$(id -u)" = 0 ]; then apt-get install -y openjdk-25-jdk-headless
+                else sudo apt-get install -y openjdk-25-jdk-headless; fi
             else
                 temurin
             fi ;;
@@ -87,13 +87,13 @@ install_jdk() {
 
 if ! has_jdk; then
     if [ "$jdk" = no ]; then
-        echo "install.sh: amie needs a JDK 21 and found none; without --no-jdk it would install one." >&2
+        echo "install.sh: amie needs a JDK 25 and found none; without --no-jdk it would install one." >&2
         exit 2
     fi
     mkdir -p "$prefix/lib"
     install_jdk
     if ! has_jdk; then
-        echo "install.sh: a JDK 21 was installed but jdk.sh still finds none; set AMIE_JAVA_HOME to its folder and run again." >&2
+        echo "install.sh: a JDK 25 was installed but jdk.sh still finds none; set AMIE_JAVA_HOME to its folder and run again." >&2
         exit 2
     fi
 fi
