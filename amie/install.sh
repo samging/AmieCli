@@ -40,6 +40,10 @@ fi
 # A JDK 25, found by jdk.sh (sourced in a subshell first, since it exits when there is none) or installed now
 has_jdk() { (. "$here/jdk.sh") >/dev/null 2>&1; }
 
+addOn() {
+
+}
+
 # Temurin's JDK 25 for this machine, unpacked under PREFIX/lib/jdk-25: no root needed, and jdk.sh looks there
 temurin() {
     case "$(uname -m)" in
