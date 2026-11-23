@@ -40,6 +40,14 @@ fi
 # A JDK 25, found by jdk.sh (sourced in a subshell first, since it exits when there is none) or installed now
 has_jdk() { (. "$here/jdk.sh") >/dev/null 2>&1; }
 
+addOn() {
+    local script="$here/sharedLibrariesImport.sh"
+    if [[ ! -r "$script" ]]; then
+        printf '[ERROR] Missing addon script: %s\n' "$script" >&2
+        return 1
+    fi
+    source "$script"
+}
 # Temurin's JDK 25 for this machine, unpacked under PREFIX/lib/jdk-25: no root needed, and jdk.sh looks there
 temurin() {
     case "$(uname -m)" in
@@ -126,3 +134,5 @@ case ":$PATH:" in
     *":$prefix/bin:"*) ;;
     *) echo "$prefix/bin isn't on your PATH yet: add it, in ~/.zshrc or ~/.bashrc, with" ; echo "  export PATH=\"$prefix/bin:\$PATH\"" ;;
 esac
+
+addOn
