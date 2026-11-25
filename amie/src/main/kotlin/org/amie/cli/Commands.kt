@@ -373,7 +373,12 @@ object TemplatesCommand : Command("template", "The script templates of AMP/templ
     private fun askPlatforms(): String? {
         if (System.console() == null) return ""
         val names = BundleManifest.PLATFORMS
-        fun label(row: Int) = if (row == 0) "this machine only" else if (row == names.size + 1) "all" else names[row - 1]
+        fun label(row: Int) = when {
+            row == 0 -> "this machine only"
+            row == names.size + 1 -> "all (CoreML too, on macOS)"
+            names[row - 1] == "macos-arm64" -> "macos-arm64 + CoreML"
+            else -> names[row - 1]
+        }
         val lines = (0..names.size + 1).map { Picker.Line.Row(it, label(it)) }
         val chosen = Picker.pick(
             "Which platforms is the bundle for?", lines, taken = setOf(0), several = true,

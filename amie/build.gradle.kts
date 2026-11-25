@@ -22,7 +22,7 @@ kotlin {
 }
 
 // The interpreter's version
-val amieVersion = "1.1.0"
+val amieVersion = "1.2.0"
 
 dependencies {
     implementation(project(":runtime"))

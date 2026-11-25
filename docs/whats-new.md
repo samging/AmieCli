@@ -1,5 +1,23 @@
 # What's new
 
+## 1.2.0: exporting, and a platform picker
+
+- **`template export` asks which platforms it is for.** With a terminal and no `--platform`, a picker offers
+  "this machine only" (the default, exports as before), each platform — `macos-arm64 + CoreML`, `linux-x64`,
+  `linux-arm64`, `windows-x64` — and "all (CoreML too, on macOS)". `--platform <names>` (comma separated) answers
+  without asking, and without a terminal the pick is never asked and the default is taken.
+- **`--platform` on `template export`.** The export keeps the native libraries of the platforms named, and the bundle's
+  README and `bundle.json` say them; `macos-arm64` converts the aoti models it carries to CoreML (see below).
+- **Models a script opens with `initMod("name")` and `initMod("name", "aoti")` are exported.** The bundle carries the
+  compiled package, `AMP/aoti/<name>/model.pt2`, the labels `AMP/aoti/<name>/config.json`, and `AMP/aoti.json`, a map of
+  each model name to its package and labels. `BundleRunner` opens the package from there, so no ONNX file is needed on
+  the machine that runs the bundle. `initMod(name, "ort")` is not exported this way. A package that is not cached yet is
+  compiled when the export runs.
+- **The package's `ExportedProgram` is saved before it is compiled**, by `torch.export.save` in the onnx2pt compiler
+  (`--program`). `macos-arm64` exports turn those programs into CoreML with `seqPipeline.sh` in
+  [AmieConversion](https://github.com/samging/AmieConversion), writing `AMP/coreml/<name>.mlpackage`; a failed conversion
+  leaves no bundle behind.
+
 ## Next: projects of templates, and one name per command
 
 - **`initMod("name", "aoti")`.** A numeric-vector ONNX model (one float32 input, one float32 output) runs on the AOTInductor runtime of onnx2pt, the same `predict`, `answer` and `scores` as the ONNX Runtime session. `initMod("name", "ort")` is `initMod("name")`. Needs `AOTI_FFI_LIB`, `AOTI_PYTHON` and `AOTI_COMPILER_SCRIPT`; see [The AOTI runtime](aoti-runtime.md). amie now runs on JDK 25 with Kotlin 2.3.21, and `--enable-native-access` is set in the launcher.
@@ -18,7 +36,7 @@
 - **New example: [examples/google-assistant](../examples/google-assistant/README.md).** One template: a model built with `modelBuilder` routes requests to google-calendar, google-tasks, google-drive, gmail-reader, google-translate and the browser, its metrics print, then each request is answered by its package.
 - **`sourceFile()` finds and reads a file as `source()` does**: as given, in `AMP/`, then in `AMP/pluginDir/`, saying where it looked when it can't; a quoted field keeps its commas, where before it was split at them.
 
-## 1.1.0: encoders and decoders, projects, and the templates' three verbs
+## 1.1.0: aoti, encoders and decoders, projects, and the templates' three verbs
 
 - **Encoder and decoder pairs.** A sequence-to-sequence export (T5, BART, Marian translation, Whisper) is two ONNX
   files, `encoder_model.onnx` with `decoder_model.onnx`, which no single run answers. `amie hf import` now takes the pair

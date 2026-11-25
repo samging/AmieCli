@@ -141,7 +141,7 @@ your own.
 $ ./amie
  ______     __    __     __     ______
 ...
-amie 1.1.0 (Kotlin 2.1.0) on OpenJDK 64-Bit Server VM 21.0.5, Mac OS X aarch64
+amie 1.2.0 (Kotlin 2.1.0) on OpenJDK 64-Bit Server VM 21.0.5, Mac OS X aarch64
 Type :help for the commands, :api for the script's functions, :docs for the book, :quit to leave. AMP: /Users/me/Library/Application Support/amie pilot/AMP
 >>> val m = initMod("greetings")
 >>> m.predict("good morning")
