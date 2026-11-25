@@ -15,6 +15,7 @@ package org.amie.cli
 
 import org.example.project.components.terminal.window.controller.envBuilder.EnvPlan
 import org.example.project.components.terminal.window.controller.envBuilder.ScriptEnvironments
+import org.example.project.components.terminal.window.controller.export.BundleManifest
 import org.example.project.components.terminal.window.controller.export.ExportCommand
 import org.example.project.components.terminal.window.controller.script.HeadlessAmie
 import org.example.project.components.terminal.window.controller.script.ScriptTemplate
@@ -288,7 +289,14 @@ object TemplatesCommand : Command("template", "The script templates of AMP/templ
                 val t = findTemplate(flags) ?: return Amie.EXIT_ERROR
                 val out = flags.valueOf("--out") ?: return failUsage("export needs --out <folder>")
                 // Says what goes in and exits with its own code: 0 written, 1 a problem, 2 nothing to export
-                val platforms = flags.valueOf("--platform")?.let { listOf("--platform", it) }.orEmpty()
+                val platforms = when (val given = flags.valueOf("--platform")) {
+                    null -> when (val asked = askPlatforms()) {
+                        null -> { println("Export cancelled."); return Amie.EXIT_OK }
+                        "" -> emptyList()
+                        else -> listOf("--platform", asked)
+                    }
+                    else -> listOf("--platform", given)
+                }
                 ExportCommand.main((listOf(t.id, "--out", out) + listOf("--no-jars").filter { flags.has(it) } + platforms).toTypedArray())
                 Amie.EXIT_OK
             }
@@ -355,5 +363,28 @@ object TemplatesCommand : Command("template", "The script templates of AMP/templ
     private fun findTemplate(flags: Flags): ScriptTemplate? {
         val wanted = flags.requireWord(0, "the template's name or id") ?: return null
         return Starters.template(wanted) ?: null.also { System.err.println(Style.error("No template '$wanted'; template list names them")) }
+    }
+
+    /**
+     * The platforms an export is for, picked at the terminal when --platform isn't given: "" for this machine only (the
+     * default, nothing added), a comma list of the platforms picked, "all", or null when the pick is left. Without a
+     * terminal it is this machine only, as an export always was.
+     */
+    private fun askPlatforms(): String? {
+        if (System.console() == null) return ""
+        val names = BundleManifest.PLATFORMS
+        fun label(row: Int) = if (row == 0) "this machine only" else if (row == names.size + 1) "all" else names[row - 1]
+        val lines = (0..names.size + 1).map { Picker.Line.Row(it, label(it)) }
+        val chosen = Picker.pick(
+            "Which platforms is the bundle for?", lines, taken = setOf(0), several = true,
+            status = { rows -> "Platforms: ${rows.sorted().joinToString(", ") { label(it) }.ifEmpty { "none" }}" },
+            footer = listOf("Choosing macos-arm64 also converts the aoti models to CoreML; this machine only does not."),
+        ) ?: return null
+        val rows = chosen - 0
+        return when {
+            rows.isEmpty() -> ""
+            names.size + 1 in rows -> "all"
+            else -> rows.sorted().joinToString(",") { names[it - 1] }
+        }
     }
 }
