@@ -114,6 +114,7 @@ object AotiModels {
 
     fun tryOpen(modelName: String): AotiAttempt {
         val name = modelName.trim()
+        BundledAoti.entry(name)?.let { return openBundled(name, it) }
         val (onnx, top) = onnxOf(name) ?: return AotiAttempt.NotOnnx
         val key = onnx.absolutePath
         val stamp = "${onnx.length()}|${onnx.lastModified()}"
@@ -128,6 +129,14 @@ object AotiModels {
             verdicts[key] = Verdict(stamp, why)
             AotiAttempt.Refused(why)
         }
+    }
+
+    /** A model a bundle carries: its package loaded as it is, its labels from the copy of its config beside it */
+    private fun openBundled(name: String, entry: BundledAoti.Entry): AotiAttempt = try {
+        val labels = entry.labels?.let(ModelText::labelsOf) ?: emptyMap()
+        AotiAttempt.Opened(AotiVectorModel(name, entry.pt2.toPath(), AotiLibrary.default().load(entry.pt2.toPath()), labels))
+    } catch (e: Exception) {
+        AotiAttempt.Refused("the bundled package ${entry.pt2.name} can't be loaded: ${e.message?.lineSequence()?.firstOrNull()}")
     }
 
     /** The ONNX file a name opens, and the folder its labels and tokenizer are looked for up to; null for a name that isn't one */

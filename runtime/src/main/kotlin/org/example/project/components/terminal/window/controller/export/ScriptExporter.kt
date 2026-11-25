@@ -49,6 +49,12 @@ import java.util.jar.JarEntry
 import java.util.jar.JarOutputStream
 import java.util.jar.Manifest
 import org.example.project.amp.ModelFolders
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.AotiDtype
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.BundledAoti
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.OnnxCache
+import org.example.project.components.terminal.window.controller.modelLoaders.imported.ImportedModels
+import org.example.project.components.terminal.window.controller.modelLoaders.imported.ModelFormat
+import org.example.project.components.terminal.window.controller.modelLoaders.imported.ModelFormats
 
 /** What can change about an export; the tests point [modelsRoot] and [classPath] at small stand-ins */
 data class ExportOptions(
@@ -65,6 +71,9 @@ data class ExportOptions(
     val templates: Set<String> = emptySet(),
     // The env's Maven packages and the package jars go in; false leaves them out and lists them in require.txt
     val withJars: Boolean = true,
+    // The platforms the bundle is for, by BundleManifest.PLATFORMS' names; empty takes what the mode carries. Chosen ones keep
+    // only their native libraries, and macos-arm64 chosen converts each compiled .pt2 to CoreML
+    val platforms: List<String> = emptyList(),
 )
 
 /** A file going into the bundle as it is; [to] is relative to the bundle. A jar with [keep] goes with only the entries it says */
@@ -97,13 +106,23 @@ class ExportPlan(
     val classPath: List<File> = emptyList(),
     // The code of each template going in, by id, as it is compiled or carried
     val templateCode: Map<String, String> = emptyMap(),
+    // The models whose ExportedProgram goes through the CoreML pipeline into AMP/coreml/<name>.mlpackage, with the program to convert
+    val coreMl: List<Pair<String, File>> = emptyList(),
+    // The models the script opens on aoti: what write compiles when their package or program isn't cached yet
+    val aotiModels: List<AotiModel> = emptyList(),
 ) {
     val bytes: Long get() = copies.sumOf { it.size } + generated.values.sumOf { it.length.toLong() }
     val compiled: Boolean get() = mode == ExportMode.COMPILED
 
     /** The same plan with [manifest], as write fills it in */
-    fun withManifest(manifest: BundleManifest) = ExportPlan(name, source, code, needs, copies, generated, classFolders, problems, manifest, mode, classPath, templateCode)
+    fun withManifest(manifest: BundleManifest) = ExportPlan(name, source, code, needs, copies, generated, classFolders, problems, manifest, mode, classPath, templateCode, coreMl, aotiModels)
 }
+
+/**
+ * A model of AMP/models/imported that a script opens on the aoti runtime, as the cache has it: its ONNX file, the key its
+ * package is cached under, the package [pt2], the ExportedProgram [program] it was compiled from, and its config.json [labels]
+ */
+class AotiModel(val name: String, val onnx: File, val key: String, val pt2: File, val program: File, val labels: File?)
 
 object ScriptExporter {
     const val AMP = "AMP"
@@ -181,6 +200,10 @@ object ScriptExporter {
     fun write(plan: ExportPlan, out: File, progress: (String, Float) -> Unit = { _, _ -> }): File {
         require(!out.exists() || out.isDirectory && out.list().isNullOrEmpty()) { "$out isn't empty: a bundle goes in a new folder" }
         val compiled = if (plan.compiled) compileAll(plan, progress) else emptyMap()
+        plan.aotiModels.filter { !it.pt2.isFile || !it.program.isFile }.forEach { model ->
+            progress("aoti ${model.name}", 0f)
+            OnnxCache.compileForExport(model.onnx.toPath(), model.pt2.toPath(), model.key)
+        }
         out.mkdirs()
         val total = plan.bytes.coerceAtLeast(1)
         var done = 0L
@@ -192,6 +215,13 @@ object ScriptExporter {
             if (keep != null) CompiledRuntime.trim(copy.from, keep, target)
             else Files.copy(copy.from.toPath(), target.toPath(), StandardCopyOption.COPY_ATTRIBUTES)
             done += copy.size
+        }
+        plan.coreMl.forEach { (name, pt2) ->
+            progress("CoreML $name", done.toFloat() / total)
+            runCatching { CoreMlExport.convert(pt2, File(out, "$AMP/coreml/$name.mlpackage")) }.onFailure {
+                out.deleteRecursively()
+                throw it
+            }
         }
         plan.generated.forEach { (path, text) ->
             File(out, path).apply { parentFile.mkdirs() }.writeText(text)
@@ -318,6 +348,13 @@ object ScriptExporter {
         val data = linkedSetOf<String>()
         val encoders = linkedSetOf<File>()
         val models = mutableListOf<BundleModel>()
+        val aotiModels = linkedMapOf<String, AotiModel>()
+        // The names the script opens on the aoti runtime: initMod("name") and initMod("name", "aoti"), not initMod("name", "ort")
+        val aotiNames: Set<String> by lazy {
+            listOf(code).plus(templateCode.values).flatMap { text ->
+                Regex("""\binitMod\(\s*"([^"]+)"\s*(?:,\s*"(aoti|ort)"\s*)?\)""").findAll(text).filter { it.groupValues[2] != "ort" }.map { it.groupValues[1].trim() }
+            }.toSet()
+        }
         val templates = linkedSetOf<String>()
         val templateNames = linkedMapOf<String, String>()
         val templateCode = linkedMapOf<String, String>()
@@ -350,17 +387,24 @@ object ScriptExporter {
             if (needs.shellCommands.isNotEmpty()) notes += "it runs shell commands, which aren't carried: ${needs.shellCommands.joinToString { "`$it`" }}. What they call has to be on the machine it runs on"
             val classPath = options.classPath.ifEmpty { System.getProperty("java.class.path").split(File.pathSeparator).map(::File) }
             val compiled = options.mode == ExportMode.COMPILED
+            val chosen = options.platforms.ifEmpty { if (compiled) listOf(CompiledRuntime.platform()) else BundleManifest.PLATFORMS }
+            // Compiled bundles keep the natives of their platform; a script bundle keeps them all unless platforms were chosen
+            val trimmed = compiled || options.platforms.isNotEmpty()
             val (jars, folders) = if (compiled) CompiledRuntime.runtimeJars(classPath, needs) else runtimeJars(classPath)
             if (compiled) {
                 if (jars.none { CompiledRuntime.baseName(it) == "kotlin-stdlib" }) problems += "the app's jars are not on this class path, so the runner has nothing to run on"
-                jars.forEach { copy(it, "$LIB/${jarName(it)}", CompiledRuntime.keeps(it)) }
-                notes += "ONNX Runtime and the tokenizers go with the native libraries of ${CompiledRuntime.platform()} only; for another platform export there, or put the whole onnxruntime and tokenizers jars from Maven Central in lib/"
                 if (needs.usesBackend) notes += "it saves state on the Amie server, so the Ktor client goes along"
                 if (needs.databases.isNotEmpty() || needs.allDatabases) notes += "the Postgres driver goes along for its databases"
             } else {
                 if (jars.none { it.name.startsWith("kotlin-compiler-embeddable") }) problems += "the app's jars are not on this class path, so the runner has nothing to run on"
-                jars.forEach { copy(it, "$LIB/${jarName(it)}") }
             }
+            jars.forEach { copy(it, "$LIB/${jarName(it)}", if (trimmed) CompiledRuntime.keeps(it, chosen) else null) }
+            if (trimmed) notes += "ONNX Runtime and the tokenizers go with the native libraries of ${chosen.joinToString()} only; for another platform export there, or put the whole onnxruntime and tokenizers jars from Maven Central in lib/"
+            val macos = options.platforms.isNotEmpty() && "macos-arm64" in chosen
+            // The CoreML model is made from each ExportedProgram, the .pt2 that torch.export saved before it was compiled
+            val coreMl = if (macos) aotiModels.values.map { it.name to it.program } else emptyList()
+            if (macos && coreMl.isEmpty()) notes += "macOS was chosen, but no model runs on aoti, so there is no CoreML model"
+            coreMl.forEach { (name, _) -> notes += "a CoreML model of $name goes in AMP/coreml/$name.mlpackage" }
 
             val manifest = BundleManifest(
                 name = name,
@@ -368,11 +412,12 @@ object ScriptExporter {
                 scriptSha256 = sha256(code),
                 exportedAt = Instant.now().toString(),
                 javaMax = if (compiled) BundleManifest.JAVA_ANY else BundleManifest.JAVA_MAX,
-                platforms = if (compiled) listOf(CompiledRuntime.platform()) else BundleManifest.PLATFORMS,
+                platforms = chosen,
                 mode = if (compiled) BundleManifest.MODE_COMPILED else BundleManifest.MODE_SCRIPT,
                 templateNames = templateNames,
                 env = env,
                 models = models,
+                aoti = aotiModels.keys.toList(),
                 builtModels = needs.builtModels.filter { n -> models.none { it.name == n } },
                 encoders = encoders.map { it.name },
                 nerModel = needs.usesNer,
@@ -392,7 +437,12 @@ object ScriptExporter {
             )
             generated[inAmp("pluginDir/main.kts")] = code
             if (required.isNotEmpty()) generated[REQUIRE_FILE] = requireText(required.values)
-            return ExportPlan(name, source, code, needs, copies.values.toList(), generated, folders, problems, manifest, options.mode, classPath, templateCode)
+            if (aotiModels.isNotEmpty()) {
+                generated[inAmp(BundledAoti.FILE_NAME)] = BundledAoti.encode(BundledAoti.Manifest(models = aotiModels.values.associate {
+                    it.name to BundledAoti.Model(pt2 = "aoti/${it.name}/model.pt2", labels = if (it.labels != null) "aoti/${it.name}/config.json" else null)
+                }))
+            }
+            return ExportPlan(name, source, code, needs, copies.values.toList(), generated, folders, problems, manifest, options.mode, classPath, templateCode, coreMl, aotiModels.values.toList())
         }
 
         // What the script reaches and what the templates it starts reach, those they start included: they run in its
@@ -463,6 +513,10 @@ object ScriptExporter {
                         .forEach { copy(it, inAmp(it.relativeTo(amp).invariantSeparatorsPath)) }
                     return@forEach
                 }
+                if (found == null && model in aotiNames && ImportedModels.has(model)) {
+                    aotiModel(model)
+                    return@forEach
+                }
                 if (found == null) {
                     if (model !in needs.builtModels) problems += "model '$model' isn't in AMP/models/intents"
                     return@forEach
@@ -484,6 +538,32 @@ object ScriptExporter {
                 models += BundleModel(model, manifest.version, encoder.name, manifest.labels.size)
             }
             if (kept.isNotEmpty()) generated[inAmp("${modulesDir.relativeTo(amp).invariantSeparatorsPath}/modules.json")] = json.encodeToString(ModuleRegistry.serializer(), ModuleRegistry(kept))
+        }
+
+        // A model of AMP/models/imported that the script opens on the aoti runtime goes in as its compiled package, the
+        // ExportedProgram that package was compiled from, and its config.json (the labels), under AMP/aoti/<name>/. The package
+        // is found by the key the runtime computes for its ONNX file here; the bundle's runner opens it through aoti.json instead
+        fun aotiModel(name: String) {
+            val folder = ImportedModels.folder(name) ?: return
+            val onnx = ModelFormats.scan(folder).of(ModelFormat.ONNX).firstOrNull()?.file
+            if (onnx == null) {
+                problems += "model '$name' is imported, but not as ONNX; only ONNX models run on aoti, and a bundle carries no other kind"
+                return
+            }
+            val cacheDir = OnnxCache.defaultCacheDir()
+            val key = runCatching { OnnxCache.cacheKey(onnx.toPath(), null, AotiDtype.FLOAT32, OnnxCache.defaultCompilerScript(), cacheDir) }
+                .getOrElse {
+                    problems += "model '$name' can't be named on this machine for its aoti package (${it.message?.lineSequence()?.firstOrNull()})"
+                    return
+                }
+            val pt2 = cacheDir.resolve("$key.pt2").toFile()
+            val program = OnnxCache.programOf(pt2.toPath()).toFile()
+            if (!pt2.isFile || !program.isFile) notes += "model '$name' is compiled for the bundle when it is exported, which takes a while: its package or its ExportedProgram isn't cached yet"
+            val labels = File(folder, "config.json").takeIf { it.isFile }
+            if (labels == null) notes += "model '$name' has no config.json, so its answers carry no labels"
+            aotiModels[name] = AotiModel(name, onnx, key, pt2, program, labels)
+            copy(pt2, inAmp("aoti/$name/model.pt2"))
+            labels?.let { copy(it, inAmp("aoti/$name/config.json")) }
         }
 
         fun encoderOf(path: String): File {
@@ -510,8 +590,8 @@ object ScriptExporter {
 
         fun encoders(modelsInvolved: Boolean) {
             val root = options.modelsRoot
-            // A text model has its own tokenizer and a speech model needs none, so a script that opens only those has no use for one
-            val ownTokenizers = (needs.models.isNotEmpty() || speechModels.isNotEmpty()) && needs.models.all(TextModels::has) && needs.builtModels.isEmpty()
+            // A text model has its own tokenizer, an imported model its own too (or none), and a speech model needs none, so a script that opens only those has no use for one
+            val ownTokenizers = (needs.models.isNotEmpty() || speechModels.isNotEmpty()) && needs.models.all { TextModels.has(it) || (ImportedModels.has(it) && !hasModule(it)) } && needs.builtModels.isEmpty()
             if (needs.usesEncoder && encoders.isEmpty() && !ownTokenizers) encoders += File(root, BundledModels.ENCODER_NAME)
             encoders.forEach { encoder ->
                 if (!File(encoder, "model.onnx").isFile) problems += "the encoder ${encoder.name} isn't on this machine (looked in ${encoder.path})"

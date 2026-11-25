@@ -159,7 +159,10 @@ internal object OnnxCache {
 
     private fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it) }
 
-    /** Compiles [onnxPath] into [cachedPt2] unless another caller already did. */
+    /** The ExportedProgram saved beside a cached package, `<key>.program.pt2`: what the package was compiled from */
+    fun programOf(cachedPt2: Path): Path = cachedPt2.resolveSibling(cachedPt2.fileName.toString().removeSuffix(".pt2") + ".program.pt2")
+
+    /** Compiles [onnxPath] into [cachedPt2] and its ExportedProgram unless another caller already did. */
     fun ensureCompiled(
         onnxPath: Path,
         cachedPt2: Path,
@@ -173,6 +176,24 @@ internal object OnnxCache {
         synchronized(lock) {
             if (Files.isRegularFile(cachedPt2)) return
             compile(onnxPath, cachedPt2, key, inputShape, dtype, pythonBin, compilerScript)
+        }
+    }
+
+    /**
+     * Compiles [onnxPath] again into [cachedPt2] and its ExportedProgram, for an export of a model that has a package but no
+     * program: a package compiled before programs were saved. The input is the default one the runtime opens with.
+     */
+    fun compileForExport(
+        onnxPath: Path,
+        cachedPt2: Path,
+        key: String,
+        pythonBin: Path = defaultPythonBin(),
+        compilerScript: Path = defaultCompilerScript(),
+    ) {
+        Files.createDirectories(cachedPt2.parent)
+        val lock = compileLocks.computeIfAbsent(key) { Any() }
+        synchronized(lock) {
+            compile(onnxPath, cachedPt2, key, null, AotiDtype.FLOAT32, pythonBin, compilerScript)
         }
     }
 
@@ -190,6 +211,7 @@ internal object OnnxCache {
         }
         val cacheDir = cachedPt2.parent
         val tempPt2 = Files.createTempFile(cacheDir, "$key.", ".tmp.pt2")
+        val tempProgram = Files.createTempFile(cacheDir, "$key.", ".tmp.program.pt2")
         val log = Files.createTempFile(cacheDir, "$key.", ".log")
         try {
             val cmd = mutableListOf(
@@ -197,6 +219,7 @@ internal object OnnxCache {
                 compilerScript.toAbsolutePath().toString(),
                 "--input", onnxPath.toString(),
                 "--output", tempPt2.toAbsolutePath().toString(),
+                "--program", tempProgram.toAbsolutePath().toString(),
                 "--dtype", dtype.cliName,
             )
             if (inputShape != null) cmd += listOf("--input-shape", inputShape.joinToString(","))
@@ -221,9 +244,11 @@ internal object OnnxCache {
                 throw AotiException("AOTInductor compilation failed for $onnxPath (exit code $exitCode):\n$output")
             }
 
+            Files.move(tempProgram, programOf(cachedPt2), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             Files.move(tempPt2, cachedPt2, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } finally {
             Files.deleteIfExists(tempPt2)
+            Files.deleteIfExists(tempProgram)
             Files.deleteIfExists(log)
         }
     }

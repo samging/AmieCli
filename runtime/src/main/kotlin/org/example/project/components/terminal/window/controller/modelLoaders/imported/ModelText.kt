@@ -60,9 +60,12 @@ internal object ModelText {
     }
 
     /** The labels of the nearest `config.json` (id2label), empty when there are none */
-    fun labels(homes: List<File>): Map<Int, String> = runCatching {
-        val config = Json.parseToJsonElement(find(homes, "config.json")!!.readText()).jsonObject
-        config["id2label"]?.jsonObject?.entries?.associate { (k, v) -> k.toInt() to v.jsonPrimitive.content } ?: emptyMap()
+    fun labels(homes: List<File>): Map<Int, String> = find(homes, "config.json")?.let(::labelsOf) ?: emptyMap()
+
+    /** The labels of the `id2label` of a config.json file; none when it has none or can't be read */
+    fun labelsOf(config: File): Map<Int, String> = runCatching {
+        val json = Json.parseToJsonElement(config.readText()).jsonObject
+        json["id2label"]?.jsonObject?.entries?.associate { (k, v) -> k.toInt() to v.jsonPrimitive.content } ?: emptyMap()
     }.getOrElse { emptyMap() }
 
     /** The values a text gives the input of [name]; null for an input text can't fill */

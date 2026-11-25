@@ -273,6 +273,20 @@ Maven jars and the package jars: `require.txt` in the bundle lists each with the
 says which are still missing, and a run fetches a missing Maven jar from Maven Central when it can reach it, while a
 missing package jar stops it. A packaged app takes the same arguments after `--export-script`.
 
+`--platform` names the platforms the bundle is for, comma separated (`macos-arm64`, `linux-x64`, `linux-arm64`,
+`windows-x64`, or `all`). Its ONNX Runtime and tokenizers natives are kept for those only, and the bundle's README and
+`bundle.json` list them.
+
+A model of `AMP/models/imported` that the script opens with `initMod(name)` or `initMod(name, "aoti")` goes in as its
+compiled package, `AMP/aoti/<name>/model.pt2`, and its labels, `AMP/aoti/<name>/config.json`. `AMP/aoti.json` maps each
+name to both paths, and the bundle's `initMod` opens the package from there, without the ONNX file. `initMod(name, "ort")`
+is not exported this way. A package that isn't cached yet is compiled when the export runs, which takes a while.
+
+Each package is compiled from an `ExportedProgram`, which the compiler saves with `torch.export.save` right after
+`torch.export.export` and before the package is built. Choosing `macos-arm64` converts those programs to CoreML: the
+conversion pipeline (`AmieConversion/seqPipeline.sh`, or the script `AMIE_COREML_PIPELINE` names) runs with each program
+and the destination `AMP/coreml/<model>.mlpackage`. A failed conversion leaves no bundle behind.
+
 The pane shows what the script reaches before anything is written: the env, models, encoder, groups, packages,
 databases, data, the Java it needs and the size, what a deployer has to supply (**To supply**), and what could not be
 included (**Can't include**), which stops the export until it is dealt with. **Export anyway** writes it regardless and

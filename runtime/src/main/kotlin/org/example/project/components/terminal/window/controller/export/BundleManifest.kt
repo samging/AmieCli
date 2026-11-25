@@ -25,6 +25,8 @@ data class BundleManifest(
     val templateNames: Map<String, String> = emptyMap(),
     val env: BundleEnv,
     val models: List<BundleModel> = emptyList(),
+    // The models of AMP/models/imported that the script opens on the aoti runtime: each goes in as its compiled .pt2 under AMP/cache/onnx_aoti
+    val aoti: List<String> = emptyList(),
     val builtModels: List<String> = emptyList(),
     // Encoder folders under models/bert/
     val encoders: List<String> = emptyList(),

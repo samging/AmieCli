@@ -12,12 +12,14 @@ object ExportCommand {
 
     private const val USAGE = """Exports a script of amie pilot as a bundle that runs without the app.
 
-  $FLAG <script> --out <folder> [--script] [--template <name>]... [--allow-missing] [--no-jars] [--plan]
+  $FLAG <script> --out <folder> [--script] [--template <name>]... [--platform <names>] [--allow-missing] [--no-jars] [--plan]
 
   <script>          main.kts, the id of a template, or a file
   --out             where the bundle goes: a new or empty folder
   --script          carry the script as text with the Kotlin compiler, instead of compiled to classes (the default)
   --template        a saved template to carry besides those the script starts, by name or id; may be given more than once
+  --platform        the platforms it is for, comma separated: macos-arm64, linux-x64, linux-arm64, windows-x64, or all. Its natives
+                    are kept for those only; macos-arm64 converts each compiled .pt2 to CoreML with the conversion pipeline
   --allow-missing   write it even though something could not be included, saying so in its README
   --no-jars         leave out the env's Maven packages and the package jars; require.txt in the bundle lists them, and
                     run.jar says which are missing before it runs
@@ -55,7 +57,8 @@ object ExportCommand {
         val allowMissing = "--allow-missing" in list
         val templates = list.withIndex().filter { it.value == "--template" }.mapNotNull { list.getOrNull(it.index + 1) }.toSet()
         val mode = if ("--script" in list) ExportMode.SCRIPT else ExportMode.COMPILED
-        val plan = ScriptExporter.plan(found.code, found.name, found.source, ExportOptions(allowMissing = allowMissing, mode = mode, templates = templates, withJars = "--no-jars" !in list))
+        val platforms = platforms(list)
+        val plan = ScriptExporter.plan(found.code, found.name, found.source, ExportOptions(allowMissing = allowMissing, mode = mode, templates = templates, withJars = "--no-jars" !in list, platforms = platforms))
         describe(plan)
         if (onlyPlan) exitProcess(if (plan.problems.isEmpty()) 0 else 1)
         if (plan.problems.isNotEmpty() && !allowMissing) fail("Nothing written. Deal with the above, or pass --allow-missing.")
@@ -66,11 +69,25 @@ object ExportCommand {
         exitProcess(0)
     }
 
+    /** The platforms of --platform: one name, several separated by commas, or all; none when the option isn't there */
+    internal fun platforms(list: List<String>): List<String> {
+        val index = list.indexOf("--platform").takeIf { it >= 0 } ?: return emptyList()
+        val value = list.getOrNull(index + 1) ?: fail("--platform needs a platform: ${BundleManifest.PLATFORMS.joinToString()}, or all")
+        if (value == "all") return BundleManifest.PLATFORMS
+        val names = value.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        val unknown = names.filter { it !in BundleManifest.PLATFORMS }
+        if (unknown.isNotEmpty()) fail("No platform ${unknown.joinToString()}; the platforms are ${BundleManifest.PLATFORMS.joinToString()}, or all")
+        return names
+    }
+
     private fun describe(plan: ExportPlan) {
         val m = plan.manifest
         println("${m.name} (${m.source}): ${m.mode}, env ${m.env.name}, ${m.env.packages} packages, ${plan.copies.size + plan.generated.size} files, ${plan.bytes shr 20} MB")
         fun line(what: String, items: List<String>) { if (items.isNotEmpty()) println("  $what: ${items.joinToString()}") }
+        line("platforms", m.platforms)
         line("models", m.models.map { it.name })
+        line("aoti models (.pt2)", m.aoti)
+        line("CoreML", plan.coreMl.map { it.first })
         line("built by the script", m.builtModels)
         line("encoders", m.encoders + listOfNotNull("named entities".takeIf { m.nerModel }))
         line("groups", m.groups)

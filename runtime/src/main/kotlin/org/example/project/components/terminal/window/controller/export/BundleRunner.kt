@@ -18,6 +18,7 @@ import org.example.project.components.terminal.window.controller.runtime.RunMete
 import org.example.project.components.terminal.window.controller.console.headlessConsole
 import org.example.project.components.terminal.window.controller.console.logToConsole
 import org.example.project.components.terminal.window.controller.modelLoaders.OrtSessions
+import org.example.project.components.terminal.window.controller.modelLoaders.aoti.BundledAoti
 import org.example.project.components.terminal.window.controller.runtime.ModelServer
 import org.example.project.components.terminal.window.controller.pluginEngine.JarPackages
 import org.example.project.components.terminal.window.controller.console.text
@@ -115,6 +116,7 @@ AMIE_AMP_DIR names a folder to work in, set up from the bundle's AMP/ the first 
         AuthState.useTokens(Secrets.get("AMIE_ACCESS_TOKEN"), Secrets.get("AMIE_REFRESH_TOKEN"))
         writeRelations(amp, manifest)
         pointTemplates(amp, manifest)
+        BundledAoti.install(File(root, ScriptExporter.AMP))
 
         val code = File(amp, "pluginDir/main.kts").readText()
         val rewrite = { script: String -> pointAtBundle(script, manifest, amp) }

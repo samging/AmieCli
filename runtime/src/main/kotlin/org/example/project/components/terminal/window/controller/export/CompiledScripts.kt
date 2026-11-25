@@ -161,30 +161,35 @@ internal object CompiledRuntime {
         return kept.filter { !isAppJar(it) } to folders + kept.filter { isAppJar(it) }
     }
 
-    /** ONNX Runtime's name for this machine: osx-aarch64, osx-x64, linux-x64, linux-aarch64, win-x64 */
-    fun ortPlatform(os: String = System.getProperty("os.name"), arch: String = System.getProperty("os.arch")): String = "${osName(os)}-${if (arm(arch)) "aarch64" else "x64"}"
-
-    /** The tokenizers' name for it: osx-aarch64, linux-x86_64, linux-aarch64, win-x86_64 */
-    fun tokenizersPlatform(os: String = System.getProperty("os.name"), arch: String = System.getProperty("os.arch")): String = "${osName(os)}-${if (arm(arch)) "aarch64" else "x86_64"}"
-
-    /** The bundle's own name for it, as the manifest lists platforms: macos-arm64, linux-x64, linux-arm64, windows-x64 */
+    /** The bundle's own name for this machine, as the manifest lists platforms: macos-arm64, linux-x64, linux-arm64, windows-x64 */
     fun platform(os: String = System.getProperty("os.name"), arch: String = System.getProperty("os.arch")): String {
         val name = os.lowercase()
         val system = if (name.contains("mac")) "macos" else if (name.contains("win")) "windows" else "linux"
         return "$system-${if (arm(arch)) "arm64" else "x64"}"
     }
 
-    private fun osName(os: String) = os.lowercase().let { if (it.contains("mac")) "osx" else if (it.contains("win")) "win" else "linux" }
     private fun arm(arch: String) = arch.lowercase().let { it.contains("aarch64") || it.contains("arm64") }
 
+    /** The folder names of [platform]'s native libraries: ONNX Runtime's (osx-aarch64, linux-x64, win-x64) and the tokenizers' (osx-aarch64, linux-x86_64, win-x86_64) */
+    fun natives(platform: String): Pair<String, String> = when (platform) {
+        "macos-arm64" -> "osx-aarch64" to "osx-aarch64"
+        "linux-x64" -> "linux-x64" to "linux-x86_64"
+        "linux-arm64" -> "linux-aarch64" to "linux-aarch64"
+        "windows-x64" -> "win-x64" to "win-x86_64"
+        else -> throw IllegalArgumentException("no platform $platform; the platforms are ${BundleManifest.PLATFORMS.joinToString()}")
+    }
+
     /**
-     * Which entries of [jar] a bundle for this platform keeps: null when the jar goes whole. ONNX Runtime and the
-     * tokenizers carry a native library for every platform, 50 to 60 MB of them for the others, and their debug symbols
+     * Which entries of [jar] a bundle for [platforms] keeps: null when the jar goes whole. ONNX Runtime and the tokenizers
+     * carry a native library for every platform, 50 to 60 MB of them for the others, and their debug symbols
      */
-    fun keeps(jar: File, ort: String = ortPlatform(), tokenizers: String = tokenizersPlatform()): ((String) -> Boolean)? = when (baseName(jar)) {
-        "onnxruntime" -> { entry -> !entry.startsWith("ai/onnxruntime/native/") || (entry.startsWith("ai/onnxruntime/native/$ort/") && !entry.contains(".dSYM/")) }
-        "tokenizers" -> { entry -> !entry.startsWith("native/lib/") || entry == "native/lib/tokenizers.properties" || entry.startsWith("native/lib/$tokenizers/") }
-        else -> null
+    fun keeps(jar: File, platforms: List<String> = listOf(platform())): ((String) -> Boolean)? {
+        val folders = platforms.map(::natives)
+        return when (baseName(jar)) {
+            "onnxruntime" -> { entry -> !entry.startsWith("ai/onnxruntime/native/") || (folders.any { entry.startsWith("ai/onnxruntime/native/${it.first}/") } && !entry.contains(".dSYM/")) }
+            "tokenizers" -> { entry -> !entry.startsWith("native/lib/") || entry == "native/lib/tokenizers.properties" || folders.any { entry.startsWith("native/lib/${it.second}/") } }
+            else -> null
+        }
     }
 
     /** [jar] copied to [into] with only the entries [keep] says */
