@@ -74,6 +74,10 @@ data class ExportOptions(
     // The platforms the bundle is for, by BundleManifest.PLATFORMS' names; empty takes what the mode carries. Chosen ones keep
     // only their native libraries, and macos-arm64 chosen converts each compiled .pt2 to CoreML
     val platforms: List<String> = emptyList(),
+    // Each model the script opens on aoti is also converted to an ExecuTorch .pte (AMP/pte/<name>.pte) by pt2Topte
+    val pte: Boolean = false,
+    // Each model the script opens on aoti also gets a CoreML model at AMP/coreml/<name>.mlpackage (--mlpackage), on any machine
+    val mlpackage: Boolean = false,
 )
 
 /** A file going into the bundle as it is; [to] is relative to the bundle. A jar with [keep] goes with only the entries it says */
@@ -110,12 +114,14 @@ class ExportPlan(
     val coreMl: List<Pair<String, File>> = emptyList(),
     // The models the script opens on aoti: what write compiles when their package or program isn't cached yet
     val aotiModels: List<AotiModel> = emptyList(),
+    // The models whose ExportedProgram goes through pt2Topte into AMP/pte/<name>.pte, when the export asked for .pte
+    val pteModels: List<AotiModel> = emptyList(),
 ) {
     val bytes: Long get() = copies.sumOf { it.size } + generated.values.sumOf { it.length.toLong() }
     val compiled: Boolean get() = mode == ExportMode.COMPILED
 
     /** The same plan with [manifest], as write fills it in */
-    fun withManifest(manifest: BundleManifest) = ExportPlan(name, source, code, needs, copies, generated, classFolders, problems, manifest, mode, classPath, templateCode, coreMl, aotiModels)
+    fun withManifest(manifest: BundleManifest) = ExportPlan(name, source, code, needs, copies, generated, classFolders, problems, manifest, mode, classPath, templateCode, coreMl, aotiModels, pteModels)
 }
 
 /**
@@ -222,6 +228,14 @@ object ScriptExporter {
                 out.deleteRecursively()
                 throw it
             }
+        }
+        plan.pteModels.forEach { model ->
+            progress("pte ${model.name}", done.toFloat() / total)
+            val result = runCatching { PteExport.convert(model.program, File(out, "$AMP/pte/${model.name}.pte")) }.onFailure {
+                out.deleteRecursively()
+                throw it
+            }.getOrThrow()
+            if (result.exit != 0) System.err.println("pte ${model.name}: pt2Topte wrote the .pte, then its own smoke test exited ${result.exit}; that test runs on its helper's input shape, not this model's")
         }
         plan.generated.forEach { (path, text) ->
             File(out, path).apply { parentFile.mkdirs() }.writeText(text)
@@ -401,11 +415,17 @@ object ScriptExporter {
             jars.forEach { copy(it, "$LIB/${jarName(it)}", if (trimmed) CompiledRuntime.keeps(it, chosen) else null) }
             if (trimmed) notes += "ONNX Runtime and the tokenizers go with the native libraries of ${chosen.joinToString()} only; for another platform export there, or put the whole onnxruntime and tokenizers jars from Maven Central in lib/"
             val macos = options.platforms.isNotEmpty() && "macos-arm64" in chosen
-            // The CoreML model is made from each ExportedProgram, the .pt2 that torch.export saved before it was compiled
-            val coreMl = if (macos) aotiModels.values.map { it.name to it.program } else emptyList()
-            if (macos && coreMl.isEmpty()) notes += "macOS was chosen, but no model runs on aoti, so there is no CoreML model"
+            // The CoreML model is made from each ExportedProgram, the .pt2 that torch.export saved before it was compiled;
+            // macOS as a platform makes it, and so does --mlpackage on any machine
+            val wantMlpackage = macos || options.mlpackage
+            val coreMl = if (wantMlpackage) aotiModels.values.map { it.name to it.program } else emptyList()
+            if (wantMlpackage && coreMl.isEmpty()) notes += "a CoreML model was asked for, but no model runs on aoti, so there is none"
             coreMl.forEach { (name, _) -> notes += "a CoreML model of $name goes in AMP/coreml/$name.mlpackage" }
 
+            val pte = if (options.pte) aotiModels.values.toList() else emptyList()
+            if (options.pte && pte.isEmpty()) notes += "a .pte was asked for, but no model runs on aoti, so there is none"
+            pte.forEach { notes += "a .pte of ${it.name} goes in AMP/pte/${it.name}.pte, converted by pt2Topte" }
+            val formatWarnings = ExportFormats.warnings(pt2 = aotiModels.isNotEmpty(), mlpackage = coreMl.isNotEmpty(), pte = pte.isNotEmpty())
             val manifest = BundleManifest(
                 name = name,
                 source = source,
@@ -418,6 +438,8 @@ object ScriptExporter {
                 env = env,
                 models = models,
                 aoti = aotiModels.keys.toList(),
+                pte = pte.map { it.name },
+                warnings = formatWarnings,
                 builtModels = needs.builtModels.filter { n -> models.none { it.name == n } },
                 encoders = encoders.map { it.name },
                 nerModel = needs.usesNer,
@@ -442,7 +464,7 @@ object ScriptExporter {
                     it.name to BundledAoti.Model(pt2 = "aoti/${it.name}/model.pt2", labels = if (it.labels != null) "aoti/${it.name}/config.json" else null)
                 }))
             }
-            return ExportPlan(name, source, code, needs, copies.values.toList(), generated, folders, problems, manifest, options.mode, classPath, templateCode, coreMl, aotiModels.values.toList())
+            return ExportPlan(name, source, code, needs, copies.values.toList(), generated, folders, problems, manifest, options.mode, classPath, templateCode, coreMl, aotiModels.values.toList(), pte)
         }
 
         // What the script reaches and what the templates it starts reach, those they start included: they run in its

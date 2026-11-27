@@ -17,6 +17,7 @@ import org.example.project.components.terminal.window.controller.envBuilder.EnvP
 import org.example.project.components.terminal.window.controller.envBuilder.ScriptEnvironments
 import org.example.project.components.terminal.window.controller.export.BundleManifest
 import org.example.project.components.terminal.window.controller.export.ExportCommand
+import org.example.project.components.terminal.window.controller.export.ExportFormats
 import org.example.project.components.terminal.window.controller.script.HeadlessAmie
 import org.example.project.components.terminal.window.controller.script.ScriptTemplate
 import org.example.project.components.terminal.window.controller.script.ScriptTemplates
@@ -245,7 +246,7 @@ object TemplatesCommand : Command("template", "The script templates of AMP/templ
         "template list" to "every template: its name, lines, env and what it opens, and which run in this process",
         "template show <name or id>" to "prints the template's code",
         "template run <name or id> [args]" to "runs the template as main.kts",
-        "template export <name or id> --out <folder> [--no-jars] [--platform <names>]" to "exports it as a bundle that runs on its own (java -jar run.jar); --no-jars leaves the env's Maven packages and the package jars out, listed in the bundle's require.txt; --platform keeps the natives of the platforms named (macos-arm64, linux-x64, linux-arm64, windows-x64, comma separated, or all), and macos-arm64 converts its .pt2 models to CoreML",
+        "template export <name or id> --out <folder> [--no-jars] [--platform <names>] [--mlpackage] [--pte]" to "exports it as a bundle that runs on its own (java -jar run.jar); --no-jars leaves the env's Maven packages and the package jars out, listed in the bundle's require.txt; --platform keeps the natives of the platforms named (macos-arm64, linux-x64, linux-arm64, windows-x64, comma separated, or all), and macos-arm64 converts its .pt2 models to CoreML; --mlpackage converts them to CoreML on any machine; --pte converts them to ExecuTorch .pte files (pt2Topte). The pt2, mlpackage and pte formats might not be stable, and the export says so",
         "template new <name> [--description <text>] [--project <project>]" to "a new template, opened in \$VISUAL or \$EDITOR to write (its path printed when neither is set); --project puts it at the end of that project and runs it in the project's env",
         "template save <name> <file> [--description <text>]" to "keeps a script file (or a project or starter by its name) as the template <name>; a name taken is saved again, its id kept",
         "template edit <name or id>" to "opens its file in \$VISUAL or \$EDITOR and takes the edit; prints the file's path when neither is set",
@@ -297,7 +298,14 @@ object TemplatesCommand : Command("template", "The script templates of AMP/templ
                     }
                     else -> listOf("--platform", given)
                 }
-                ExportCommand.main((listOf(t.id, "--out", out) + listOf("--no-jars").filter { flags.has(it) } + platforms).toTypedArray())
+                val formats = when {
+                    flags.has("--pte") || flags.has("--mlpackage") -> listOf("--pte", "--mlpackage").filter { flags.has(it) }
+                    else -> when (val asked = askFormats()) {
+                        null -> { println("Export cancelled."); return Amie.EXIT_OK }
+                        else -> asked
+                    }
+                }
+                ExportCommand.main((listOf(t.id, "--out", out) + listOf("--no-jars").filter { flags.has(it) } + platforms + formats).toTypedArray())
                 Amie.EXIT_OK
             }
             "new" -> {
@@ -370,6 +378,26 @@ object TemplatesCommand : Command("template", "The script templates of AMP/templ
      * default, nothing added), a comma list of the platforms picked, "all", or null when the pick is left. Without a
      * terminal it is this machine only, as an export always was.
      */
+    /**
+     * The extra formats of an export, asked at the terminal: mlpackage and pte, none by default. The pt2 package is always
+     * carried for an aoti model. Each format's stability warning is in the footer. Null when the pick is left; without a
+     * terminal none are made.
+     */
+    private fun askFormats(): List<String>? {
+        if (System.console() == null) return emptyList()
+        val names = listOf("--mlpackage", "--pte")
+        val lines = listOf(
+            Picker.Line.Row(0, "mlpackage (CoreML, from each model's program)"),
+            Picker.Line.Row(1, "pte (ExecuTorch, from each model's program, via pt2Topte)"),
+        )
+        val chosen = Picker.pick(
+            "Which formats besides pt2 (the aoti package, always included)?", lines, taken = emptySet(), several = true,
+            status = { rows -> "Formats: pt2" + rows.sorted().joinToString("") { ", " + listOf("mlpackage", "pte")[it] } },
+            footer = ExportFormats.warnings(pt2 = true, mlpackage = true, pte = true),
+        ) ?: return null
+        return chosen.sorted().map { names[it] }
+    }
+
     private fun askPlatforms(): String? {
         if (System.console() == null) return ""
         val names = BundleManifest.PLATFORMS

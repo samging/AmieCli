@@ -287,6 +287,19 @@ Each package is compiled from an `ExportedProgram`, which the compiler saves wit
 conversion pipeline (`AmieConversion/seqPipeline.sh`, or the script `AMIE_COREML_PIPELINE` names) runs with each program
 and the destination `AMP/coreml/<model>.mlpackage`. A failed conversion leaves no bundle behind.
 
+The formats of a bundle with aoti models are pt2, always included, and two extras: `--mlpackage` (a CoreML model at
+`AMP/coreml/<model>.mlpackage`, on any machine) and `--pte` (below). `template export` asks which extras to make when no
+format flag is given, at a terminal; the default is none. Each format is marked as possibly unstable, both in that
+question and in the export summary, which prints a `warning:` line for every format the bundle carries: the pt2 package
+may not load on another torch version, the mlpackage's output or support may change between coremltools versions, and
+the pte is checked by a smoke test on another input shape.
+
+`--pte` (on `--export-script`, and `template export`) also converts each of those programs to an ExecuTorch `.pte` with pt2Topte, the converter in
+`~/GitHubRepository/pt2Topte` (`AMIE_PTE_CONVERTER` names another). The `.pte` goes in `AMP/pte/<model>.pte`, listed as
+`pte` in `bundle.json`. The converter runs its own smoke test on its helper's input shape, so it exits 1 for a model of
+another input size after the `.pte` is written; the export keeps that `.pte` and prints the exit, and it fails only when no
+`.pte` was written.
+
 The pane shows what the script reaches before anything is written: the env, models, encoder, groups, packages,
 databases, data, the Java it needs and the size, what a deployer has to supply (**To supply**), and what could not be
 included (**Can't include**), which stops the export until it is dealt with. **Export anyway** writes it regardless and

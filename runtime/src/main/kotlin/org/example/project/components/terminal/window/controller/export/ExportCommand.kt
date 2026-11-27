@@ -12,7 +12,7 @@ object ExportCommand {
 
     private const val USAGE = """Exports a script of amie pilot as a bundle that runs without the app.
 
-  $FLAG <script> --out <folder> [--script] [--template <name>]... [--platform <names>] [--allow-missing] [--no-jars] [--plan]
+  $FLAG <script> --out <folder> [--script] [--template <name>]... [--platform <names>] [--mlpackage] [--pte] [--allow-missing] [--no-jars] [--plan]
 
   <script>          main.kts, the id of a template, or a file
   --out             where the bundle goes: a new or empty folder
@@ -20,6 +20,8 @@ object ExportCommand {
   --template        a saved template to carry besides those the script starts, by name or id; may be given more than once
   --platform        the platforms it is for, comma separated: macos-arm64, linux-x64, linux-arm64, windows-x64, or all. Its natives
                     are kept for those only; macos-arm64 converts each compiled .pt2 to CoreML with the conversion pipeline
+  --mlpackage       also convert each model the script opens on aoti to a CoreML model, AMP/coreml/<name>.mlpackage, on any machine
+  --pte             also convert each model the script opens on aoti to an ExecuTorch .pte, with pt2Topte, into AMP/pte/
   --allow-missing   write it even though something could not be included, saying so in its README
   --no-jars         leave out the env's Maven packages and the package jars; require.txt in the bundle lists them, and
                     run.jar says which are missing before it runs
@@ -58,7 +60,7 @@ object ExportCommand {
         val templates = list.withIndex().filter { it.value == "--template" }.mapNotNull { list.getOrNull(it.index + 1) }.toSet()
         val mode = if ("--script" in list) ExportMode.SCRIPT else ExportMode.COMPILED
         val platforms = platforms(list)
-        val plan = ScriptExporter.plan(found.code, found.name, found.source, ExportOptions(allowMissing = allowMissing, mode = mode, templates = templates, withJars = "--no-jars" !in list, platforms = platforms))
+        val plan = ScriptExporter.plan(found.code, found.name, found.source, ExportOptions(allowMissing = allowMissing, mode = mode, templates = templates, withJars = "--no-jars" !in list, platforms = platforms, pte = "--pte" in list, mlpackage = "--mlpackage" in list))
         describe(plan)
         if (onlyPlan) exitProcess(if (plan.problems.isEmpty()) 0 else 1)
         if (plan.problems.isNotEmpty() && !allowMissing) fail("Nothing written. Deal with the above, or pass --allow-missing.")
@@ -87,6 +89,7 @@ object ExportCommand {
         line("platforms", m.platforms)
         line("models", m.models.map { it.name })
         line("aoti models (.pt2)", m.aoti)
+        line("ExecuTorch .pte", m.pte)
         line("CoreML", plan.coreMl.map { it.first })
         line("built by the script", m.builtModels)
         line("encoders", m.encoders + listOfNotNull("named entities".takeIf { m.nerModel }))
@@ -99,6 +102,7 @@ object ExportCommand {
         m.leftOut.forEach { println("  left out: $it") }
         if (m.required.isNotEmpty()) println("  jars left out, listed in ${ScriptExporter.REQUIRE_FILE}: ${m.required.joinToString { it.what }}")
         m.notes.forEach { println("  note: $it") }
+        m.warnings.forEach { println("  $it") }
         plan.problems.forEach { System.err.println("  PROBLEM: $it") }
     }
 

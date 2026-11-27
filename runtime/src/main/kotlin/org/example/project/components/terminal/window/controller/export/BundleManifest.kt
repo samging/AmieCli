@@ -27,6 +27,10 @@ data class BundleManifest(
     val models: List<BundleModel> = emptyList(),
     // The models of AMP/models/imported that the script opens on the aoti runtime: each goes in as its compiled .pt2 under AMP/cache/onnx_aoti
     val aoti: List<String> = emptyList(),
+    // The aoti models that also carry an ExecuTorch .pte, at AMP/pte/<name>.pte (exported with --pte)
+    val pte: List<String> = emptyList(),
+    // The stability warnings of the formats this bundle carries (see ExportFormats)
+    val warnings: List<String> = emptyList(),
     val builtModels: List<String> = emptyList(),
     // Encoder folders under models/bert/
     val encoders: List<String> = emptyList(),
