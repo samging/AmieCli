@@ -44,6 +44,8 @@ application {
         "--add-opens=java.base/java.lang=ALL-UNNAMED",
         // The AOTI runtime calls its native library through java.lang.foreign
         "--enable-native-access=ALL-UNNAMED",
+        // The Kotlin script compiler calls sun.misc.Unsafe, which the JDK warns about on every start; this allows it
+        "--sun-misc-unsafe-memory-access=allow",
     ) + (System.getenv("AMIE_JVM_ARGS")?.split(' ')?.filter { it.isNotBlank() } ?: emptyList())
 }
 
